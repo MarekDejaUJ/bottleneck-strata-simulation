@@ -1,0 +1,25 @@
+{
+  "title": "Bottleneck Strata Simulation",
+  "upload_type": "dataset",
+  "version": "1.0.0",
+  "description": "<p>Data and code of the simulation study in Marek Deja, <em>Bottleneck strata for bounds on probabilities of causation from combined experimental and observational data</em> (manuscript). The study answers five questions fixed in a protocol before any data were produced: the validity of the population bounds of stratifiers learned from a sample, the width of the bounds, the behavior of the estimated bounds and of the Imbens-Manski interval in finite samples, the certificate on the width lost by compression, and the two-group specification of the multivariate bottleneck.</p><p>Contents: the protocol, the three scripts that produce the result tables, the result tables of the two experiments and of the five questions, and ibstrata 0.1.0, the Python package that implements the method, with its tests. The protocol, the README and the tables are licensed under CC BY 4.0; the scripts and ibstrata are licensed under the GNU General Public License, version 3 or later.</p>",
+  "creators": [
+    {
+      "name": "Deja, Marek",
+      "affiliation": "Institute of Information Studies, Jagiellonian University",
+      "orcid": "0000-0003-0015-2322"
+    }
+  ],
+  "license": "cc-by-4.0",
+  "access_right": "open",
+  "language": "eng",
+  "keywords": [
+    "probabilities of causation",
+    "probability of necessity and sufficiency",
+    "partial identification",
+    "information bottleneck",
+    "covariate stratification",
+    "randomized preference design",
+    "simulation study"
+  ]
+}

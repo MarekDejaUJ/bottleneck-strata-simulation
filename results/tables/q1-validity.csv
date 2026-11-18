@@ -1,0 +1,11 @@
+experiment,estimator,replicates,valid_share
+1,bottleneck,9600,1.0
+1,kmeans,9600,1.0
+1,oracle,9600,1.0
+1,plain,9600,1.0
+1,random,9600,1.0
+2,bottleneck,600,1.0
+2,kmeans,600,1.0
+2,oracle,600,1.0
+2,plain,600,1.0
+2,reach-practice,600,1.0
