@@ -6,9 +6,14 @@ Tian, J., & Pearl, J. (2000). Probabilities of causation: Bounds and identificat
     Annals of Mathematics and Artificial Intelligence, 28(1-4), 287-313.
 Li, A., & Pearl, J. (2024). Probabilities of causation with nonbinary treatment and
     effect. Proceedings of the AAAI Conference on Artificial Intelligence, 38(18),
-    20465-20472. Theorems 4-7 (single hypothetical term; sharp).
+    20465-20472. Theorems 4-7 (single hypothetical term). The lower bounds of
+    Theorems 4 and 5 are valid and fall below the attainable value in part of the
+    parameter space.
 Shu, X., Wang, S., & Li, A. (2026). Identification of probabilities of causation: From
-    recursive to closed-form bounds. Proceedings of IJCAI-26, 4063-4070. Theorem 2.
+    recursive to closed-form bounds. Proceedings of IJCAI-26, 4063-4070. Theorem 2
+    (PNS with several hypothetical terms) and Theorem 4, whose lower bounds with one
+    hypothetical term are the lower bounds of ``preservation_sharp`` and
+    ``replacement_sharp``.
 """
 
 from __future__ import annotations
@@ -136,7 +141,8 @@ def li_pearl_theorem5(margins: Margins, i: int, j: int, k: int) -> Bounds:
 
 
 def preservation_sharp(margins: Margins, i: int, j: int) -> Bounds:
-    """Sharp bounds on P(y_i x_j, y_i).
+    """Bounds on P(y_i x_j, y_i) with the attained lower bound (the lower bound of Shu,
+    Wang and Li, 2026, Theorem 4, with one hypothetical term).
 
     Units that chose x_j contribute exactly P(x_j, y_i). Among units that chose another
     treatment, the event {Y_{x_j} = y_i} has probability P(y_i x_j) - P(x_j, y_i) and the
@@ -154,7 +160,8 @@ def preservation_sharp(margins: Margins, i: int, j: int) -> Bounds:
 
 
 def replacement_sharp(margins: Margins, i: int, j: int, k: int) -> Bounds:
-    """Sharp bounds on P(y_i x_j, y_k), i != k.
+    """Bounds on P(y_i x_j, y_k), i != k, with the attained lower bound (the lower bound
+    of Shu, Wang and Li, 2026, Theorem 4, with one hypothetical term).
 
     Units that chose x_j cannot belong to the event. Among the others, {Y_{x_j} = y_i}
     has probability P(y_i x_j) - P(x_j, y_i) and {Y = y_k} has probability

@@ -11,7 +11,7 @@ from the parameters without sampling.
 from __future__ import annotations
 
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import numpy as np
 
@@ -245,3 +245,164 @@ def purity_compositions(k: int, purity: float) -> np.ndarray:
             comp[t] = (0.97 - purity) / 2
         rows.append([comp[t] for t in _ORDER])
     return np.array(rows)
+
+
+def dominant_type_probs(dominant: Sequence[Sequence[str]], purity: float) -> np.ndarray:
+    """Type compositions (never, helped, hurt, always) for a table of dominant types: the
+    dominant type of a cell has share ``purity``, hurt 0.03, and the rest splits equally
+    between the two other types."""
+    table = np.empty((len(dominant), len(dominant[0]), 4))
+    for i, row in enumerate(dominant):
+        for j, dom in enumerate(row):
+            comp = {"never": 0.0, "helped": 0.0, "hurt": 0.03, "always": 0.0}
+            comp[dom] = purity
+            for t in (t for t in ("never", "helped", "always") if t != dom):
+                comp[t] = (0.97 - purity) / 2
+            table[i, j] = [comp[t] for t in _ORDER]
+    return table
+
+
+# ---------------------------------------------------------------------------------------
+# Regimes expressed in tap-order blocks
+
+
+@dataclass
+class TapTaskModel:
+    """One tap-order task of ``TapRegimeDGP``.
+
+    ``means[r]`` holds the mean utility of every item in regime ``r`` of the task's group,
+    measured from the anchor card (utility 0) in units of the block noise; a person taps the
+    cards of a block in decreasing order of perceived utility.
+    """
+
+    key: str
+    items: list[str]
+    blocks: list[list[str]]
+    means: np.ndarray  # (regimes of the group, items)
+    group: str  # "access" or "practice"
+    anchor: str | None = "ANCHOR"
+
+
+@dataclass
+class TapRegimeDGP:
+    """Reach and practice regimes that persons express in tap-order blocks.
+
+    A person has a reach regime ``a`` and a practice regime ``m``, drawn from
+    ``reach_probs`` and ``practice_given_reach``. In every task of the access group the
+    person's utility of an item is ``separation * means[a, item]`` plus a person deviation
+    with standard deviation ``person_sd``; the tasks of the practice group use ``m``. In
+    every block the perceived utility adds block noise with standard deviation 1 to the
+    person's utilities and to the anchor's utility 0, and the person taps the cards in
+    decreasing order of perceived utility. The features are the anchor shares and the
+    precedence shares of ``ibstrata.orders.TapTask.features``. Response types, choice and
+    outcome follow ``RegimeDGP`` on the combined regime ``r = a * k_m + m``; ``exclusion``
+    is the share of persons removed at random before the analysis (failed attention
+    blocks).
+    """
+
+    tasks: list[TapTaskModel]
+    reach_probs: np.ndarray  # (k_a,)
+    practice_given_reach: np.ndarray  # (k_a, k_m)
+    type_probs: np.ndarray  # (k_a, k_m, 4) never, helped, hurt, always
+    choice_base: np.ndarray  # (k_a, k_m) logit of choosing x = 1
+    confounding: float = 1.0
+    pi: np.ndarray = field(default_factory=lambda: np.full(3, 1 / 3))
+    separation: float = 1.0
+    person_sd: float = 0.5
+    exclusion: float = 0.0
+
+    @property
+    def k_a(self) -> int:
+        return self.reach_probs.shape[0]
+
+    @property
+    def k_m(self) -> int:
+        return self.practice_given_reach.shape[1]
+
+    @property
+    def regimes(self) -> RegimeDGP:
+        """The combined regimes as a ``RegimeDGP`` without binary features."""
+        probs = (self.reach_probs[:, None] * self.practice_given_reach).ravel()
+        k = probs.shape[0]
+        return RegimeDGP(probs, np.zeros((k, 0)), self.type_probs.reshape(k, 4),
+                         np.asarray(self.choice_base, dtype=float).ravel(), self.confounding,
+                         np.asarray(self.pi, dtype=float))
+
+    def feature_names(self) -> list[str]:
+        names = []
+        for t in self.tasks:
+            if t.anchor is not None:
+                names += [f"{t.key}:anchor:{c}" for c in t.items]
+            names += [f"{t.key}:prec:{a}>{b}" for a, b in _pairs(t.items)]
+        return names
+
+    def feature_groups(self) -> dict[str, np.ndarray]:
+        """Column indices of the access and the practice features."""
+        groups: dict[str, list[int]] = {"access": [], "practice": []}
+        col = 0
+        for t in self.tasks:
+            width = (len(t.items) if t.anchor is not None else 0) + len(_pairs(t.items))
+            groups[t.group] += list(range(col, col + width))
+            col += width
+        return {g: np.array(v, dtype=int) for g, v in groups.items()}
+
+    def sample(self, n: int, rng: np.random.Generator, orders: bool = False):
+        """Draw ``n`` persons and remove the excluded share.
+
+        Returns the design and the reach and practice regimes of the analysed persons and,
+        with ``orders=True``, the tapped orders as ``{task: [[order of block b] per person]}``.
+        """
+        design, regime = self.regimes.sample(n, rng)
+        a, m = regime // self.k_m, regime % self.k_m
+        feats, taps = [], {}
+        for t in self.tasks:
+            r = a if t.group == "access" else m
+            f, o = _tap_features(t, r, self.separation, self.person_sd, rng, orders)
+            feats.append(f)
+            if orders:
+                taps[t.key] = o
+        x = np.concatenate(feats, axis=1)
+        keep = np.flatnonzero(rng.random(n) >= self.exclusion)
+        design = Design(design.arm[keep], design.x[keep], design.y[keep], x[keep], m=2, n_y=2,
+                        pi=design.pi)
+        if orders:
+            taps = {k: [v[i] for i in keep] for k, v in taps.items()}
+            return design, a[keep], m[keep], taps
+        return design, a[keep], m[keep]
+
+
+def _pairs(items: Sequence[str]) -> list[tuple[str, str]]:
+    return [(items[i], items[j]) for i in range(len(items)) for j in range(i + 1, len(items))]
+
+
+def _tap_features(task: TapTaskModel, regime: np.ndarray, separation: float, person_sd: float,
+                  rng: np.random.Generator, keep_orders: bool):
+    """Anchor shares and precedence shares of simulated tap orders, in the column order of
+    ``TapTask.features``."""
+    items = list(task.items)
+    cards = items + ([task.anchor] if task.anchor is not None else [])
+    idx = {c: i for i, c in enumerate(cards)}
+    n, v = regime.shape[0], len(items)
+    util = np.zeros((n, len(cards)))
+    util[:, :v] = separation * task.means[regime] + person_sd * rng.standard_normal((n, v))
+    wins = np.zeros((n, len(cards), len(cards)))
+    meets = np.zeros((len(cards), len(cards)))
+    orders = [[] for _ in range(n)] if keep_orders else None
+    rows = np.arange(n)
+    for block in task.blocks:
+        cols = [idx[c] for c in block] + ([idx[task.anchor]] if task.anchor is not None else [])
+        perceived = util[:, cols] + rng.standard_normal((n, len(cols)))
+        before = perceived[:, :, None] > perceived[:, None, :]
+        wins[np.ix_(rows, cols, cols)] += before
+        meets[np.ix_(cols, cols)] += 1
+        if keep_orders:
+            ranked = np.argsort(-perceived, axis=1)
+            for i in range(n):
+                orders[i].append([cards[cols[j]] for j in ranked[i]])
+    parts = []
+    if task.anchor is not None:
+        an = idx[task.anchor]
+        parts.append(wins[:, :v, an] / meets[:v, an])
+    pairs = [(idx[a], idx[b]) for a, b in _pairs(items)]
+    parts.append(np.stack([wins[:, i, j] / meets[i, j] for i, j in pairs], axis=1))
+    return np.concatenate(parts, axis=1), orders
